@@ -14,18 +14,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-import com.example.util.AudioRecorderHelper
-import java.io.File
-
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val database = AssistantDatabase.getDatabase(application)
     private val repository = AssistantRepository(database.commandDao())
     
-    // Add recorder helper
-    private val audioRecorderHelper = AudioRecorderHelper(application)
-    private var currentRecordingFile: File? = null
-
     // UI state flows
     val commandLogs: StateFlow<List<CommandLog>> = repository.allLogs
         .stateIn(
@@ -59,41 +52,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _executionTrigger = MutableStateFlow<Pair<String, String>?>(null)
     val executionTrigger: StateFlow<Pair<String, String>?> = _executionTrigger.asStateFlow()
 
-    fun startRecording() {
+    fun startListeningFallback() {
         if (_isListening.value) return
         _isListening.value = true
         _assistantState.value = "LISTENING"
-        _feedbackMessage.value = "Listening via Whisper..."
-        currentRecordingFile = audioRecorderHelper.startRecording()
+        _feedbackMessage.value = "Listening..."
     }
 
-    fun stopRecording() {
+    fun stopListeningFallback() {
         if (!_isListening.value) return
         _isListening.value = false
-        val file = audioRecorderHelper.stopRecording()
-        
-        if (file == null) {
-            _assistantState.value = "IDLE"
-            _feedbackMessage.value = "Error capturing audio."
-            return
-        }
-
-        // Process audio with Whisper
-        viewModelScope.launch {
-            _assistantState.value = "PROCESSING"
-            _feedbackMessage.value = "Transcribing with Whisper..."
-            val keyToUse = if (_overrideApiKey.value.isNotBlank()) _overrideApiKey.value else promptApiKey
-            val transcript = repository.transcribeAudioFile(file, keyToUse)
-            
-            if (transcript.startsWith("Error")) {
-                _assistantState.value = "IDLE"
-                _feedbackMessage.value = transcript
-                return@launch
-            }
-            
-            _inputText.value = transcript
-            onCommandReceived(transcript)
-        }
+        _assistantState.value = "IDLE"
     }
 
     fun updateInputText(newText: String) {

@@ -40,12 +40,12 @@ class AssistantRepository(private val commandDao: CommandDao) {
 
         // Default to Groq since it specifically supports openai/whisper-large-v3, but use NIM if preferred. 
         // We will hit NVIDIA NIM endpoint for OpenAI compatibility:
-        val url = "https://integrate.api.nvidia.com/v1/audio/transcriptions"
+        val url = "https://ai.api.nvidia.com/v1/audio/transcriptions"
         
         val requestBody = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart("file", audioFile.name, audioFile.asRequestBody("audio/mp4".toMediaType()))
-            .addFormDataPart("model", "openai/whisper-large-v3") // NVIDIA hosted whisper model
+            .addFormDataPart("model", "nvidia/parakeet-rnnt-1.1b") // Switching to NVIDIA Parakeet for ASR
             .addFormDataPart("language", "en")
             .build()
 
