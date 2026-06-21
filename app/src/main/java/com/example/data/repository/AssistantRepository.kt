@@ -11,8 +11,66 @@ import com.example.data.database.CommandLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
+import org.json.JSONObject
+import java.io.File
+import java.util.concurrent.TimeUnit
 
 class AssistantRepository(private val commandDao: CommandDao) {
+    
+    // OkHttp for audio uploads
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .build()
+
+    suspend fun transcribeAudioFile(audioFile: File, userProvidedKey: String? = null): String = withContext(Dispatchers.IO) {
+        val configKey = BuildConfig.NVIDIA_API_KEY
+        val rawKey = if (configKey.isNotBlank() && configKey != "MY_NVIDIA_API_KEY") {
+            configKey
+        } else {
+            userProvidedKey ?: ""
+        }
+
+        if (rawKey.isBlank()) return@withContext "Error: Missing API Key"
+
+        // Default to Groq since it specifically supports openai/whisper-large-v3, but use NIM if preferred. 
+        // We will hit NVIDIA NIM endpoint for OpenAI compatibility:
+        val url = "https://integrate.api.nvidia.com/v1/audio/transcriptions"
+        
+        val requestBody = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("file", audioFile.name, audioFile.asRequestBody("audio/mp4".toMediaType()))
+            .addFormDataPart("model", "openai/whisper-large-v3") // NVIDIA hosted whisper model
+            .addFormDataPart("language", "en")
+            .build()
+
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("Authorization", "Bearer $rawKey")
+            .post(requestBody)
+            .build()
+
+        try {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    val err = response.body?.string() ?: "Unknown error"
+                    Log.e("AssistantRepo", "ASR Error: ${response.code} $err")
+                    return@withContext "Error: Could not transcribe audio. Response code ${response.code}"
+                }
+                val bodyString = response.body?.string() ?: ""
+                val json = JSONObject(bodyString)
+                return@withContext json.optString("text", "Error: No text found")
+            }
+        } catch (e: Exception) {
+            Log.e("AssistantRepo", "ASR Exception", e)
+            return@withContext "Error: Failed to reach transcription service."
+        }
+    }
 
     val allLogs: Flow<List<CommandLog>> = commandDao.getAllLogs()
 
@@ -55,7 +113,7 @@ class AssistantRepository(private val commandDao: CommandDao) {
 
             JSON Schema:
             {
-              "action": "PLAY_YOUTUBE" | "OPEN_YOUTUBE" | "OPEN_GALLERY" | "OPEN_CAMERA" | "WEB_SEARCH" | "SET_ALARM" | "SET_TIMER" | "NAVIGATE_TO" | "DIAL_PHONE" | "SEND_EMAIL" | "UNKNOWN",
+              "action": "PLAY_YOUTUBE" | "OPEN_YOUTUBE" | "OPEN_GALLERY" | "OPEN_CAMERA" | "WEB_SEARCH" | "SET_ALARM" | "SET_TIMER" | "NAVIGATE_TO" | "DIAL_PHONE" | "SEND_EMAIL" | "OPEN_APP" | "UNKNOWN",
               "parameter": "string (the query or extra context, or empty string)",
               "reply": "string (a friendly, natural visual confirmation of the action)"
             }
@@ -71,7 +129,8 @@ class AssistantRepository(private val commandDao: CommandDao) {
             8. If the user wants navigation or directions (e.g. "Take me to Starbucks", "Navigate home"), set action to "NAVIGATE_TO", parameter to the destination (e.g. "Starbucks"), and reply to "Starting navigation...".
             9. If the user wants to call someone (e.g. "Call Mom", "Dial 123456"), set action to "DIAL_PHONE", parameter to the phone number or contact name, and reply to "Opening dialer...".
             10. If the user wants to send an email (e.g. "Send an email", "Email John"), set action to "SEND_EMAIL", parameter to the subject or contact, and reply to "Opening email app...".
-            11. In all other cases where you cannot confidently map to a specific action, set action to "UNKNOWN", parameter to "", and reply to a conversational response.
+            11. If the user asks to open or launch an application by name (e.g. "Open Spotify", "Launch Netflix", "Start Calculator"), set action to "OPEN_APP", parameter to the exact app name (e.g. "Spotify", "Netflix"), and reply to "Opening [app]...".
+            12. In all other cases where you cannot confidently map to a specific action, set action to "UNKNOWN", parameter to "", and reply to a conversational response.
         """.trimIndent()
 
         val messages = listOf(
@@ -202,6 +261,14 @@ class AssistantRepository(private val commandDao: CommandDao) {
                     action = "SEND_EMAIL",
                     parameter = "",
                     reply = "Offline local mode: Opening email client..."
+                )
+            }
+            normalized.contains("open") || normalized.contains("launch") || normalized.contains("start") -> {
+                val app = normalized.replace("open", "").replace("launch", "").replace("start", "").trim()
+                CommandParsingResult(
+                    action = "OPEN_APP",
+                    parameter = app,
+                    reply = "Offline local mode: Opening $app..."
                 )
             }
             else -> {

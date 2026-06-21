@@ -40,6 +40,9 @@ object DeviceController {
                 "SEND_EMAIL" -> {
                     sendEmail(context, parameter)
                 }
+                "OPEN_APP" -> {
+                    openOptionalApp(context, parameter)
+                }
                 else -> {
                     Toast.makeText(context, "Conversational response returned.", Toast.LENGTH_SHORT).show()
                 }
@@ -182,5 +185,55 @@ object DeviceController {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
         context.startActivity(intent)
+    }
+
+    private fun openOptionalApp(context: Context, appName: String) {
+        if (appName.isBlank()) return
+
+        val pm = context.packageManager
+        val packages = pm.getInstalledApplications(android.content.pm.PackageManager.GET_META_DATA)
+        var launchIntent: Intent? = null
+        
+        // Exact match
+        for (app in packages) {
+            val label = pm.getApplicationLabel(app).toString()
+            if (label.equals(appName, ignoreCase = true)) {
+                launchIntent = pm.getLaunchIntentForPackage(app.packageName)
+                if (launchIntent != null) {
+                    break
+                }
+            }
+        }
+        
+        // Partial match
+        if (launchIntent == null) {
+            for (app in packages) {
+                val label = pm.getApplicationLabel(app).toString()
+                if (label.contains(appName, ignoreCase = true)) {
+                    launchIntent = pm.getLaunchIntentForPackage(app.packageName)
+                    if (launchIntent != null) {
+                        break
+                    }
+                }
+            }
+        }
+        
+        if (launchIntent != null) {
+            launchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            context.startActivity(launchIntent)
+        } else {
+            // Open Play Store
+            val playStoreIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://search?q=${Uri.encode(appName)}&c=apps")).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            try {
+                context.startActivity(playStoreIntent)
+            } catch (e: Exception) {
+                val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/search?q=${Uri.encode(appName)}&c=apps")).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(webIntent)
+            }
+        }
     }
 }

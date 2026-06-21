@@ -163,94 +163,9 @@ class MainActivity : ComponentActivity() {
 
     private fun toggleSpeechListening() {
         if (viewModel.isListening.value) {
-            stopSpeechRecognition()
+            viewModel.stopRecording()
         } else {
-            startSpeechRecognition()
-        }
-    }
-
-    private fun startSpeechRecognition() {
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            Toast.makeText(this, "System speech engine is currently unavailable.", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        runOnUiThread {
-            try {
-                speechRecognizer?.destroy()
-                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
-                }
-
-                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
-                    setRecognitionListener(object : RecognitionListener {
-                        override fun onReadyForSpeech(params: Bundle?) {
-                            viewModel.setListening(true)
-                        }
-
-                        override fun onBeginningOfSpeech() {
-                            Log.d("VoiceEngine", "Began speech voice intake")
-                        }
-
-                        override fun onRmsChanged(rmsdB: Float) {}
-
-                        override fun onBufferReceived(buffer: ByteArray?) {}
-
-                        override fun onEndOfSpeech() {
-                            viewModel.setListening(false)
-                        }
-
-                        override fun onError(error: Int) {
-                            Log.e("VoiceEngine", "Recognizer error code: $error")
-                            viewModel.setListening(false)
-                            val friendlyError = when (error) {
-                                SpeechRecognizer.ERROR_AUDIO -> "Audio record error."
-                                SpeechRecognizer.ERROR_CLIENT -> "Client issue."
-                                SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Permission missing."
-                                SpeechRecognizer.ERROR_NETWORK -> "Network issue."
-                                SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network timeout."
-                                SpeechRecognizer.ERROR_NO_MATCH -> "No speech matching detected."
-                                SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Vocal system busy."
-                                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Timeout (is anybody speaking?)."
-                                else -> "Unknown speech error."
-                            }
-                            Toast.makeText(this@MainActivity, friendlyError, Toast.LENGTH_SHORT).show()
-                        }
-
-                        override fun onResults(results: Bundle?) {
-                            val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                            val match = matches?.firstOrNull() ?: ""
-                            if (match.isNotBlank()) {
-                                viewModel.onCommandReceived(match)
-                            } else {
-                                Toast.makeText(this@MainActivity, "No matches found.", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-
-                        override fun onPartialResults(partialResults: Bundle?) {}
-
-                        override fun onEvent(eventType: Int, params: Bundle?) {}
-                    })
-                    startListening(intent)
-                }
-            } catch (e: Exception) {
-                Log.e("VoiceEngine", "Critical assembly crash", e)
-                viewModel.setListening(false)
-            }
-        }
-    }
-
-    private fun stopSpeechRecognition() {
-        runOnUiThread {
-            try {
-                speechRecognizer?.stopListening()
-                viewModel.setListening(false)
-            } catch (e: Exception) {
-                Log.e("VoiceEngine", "Failed to halt engine", e)
-            }
+            viewModel.startRecording()
         }
     }
 
