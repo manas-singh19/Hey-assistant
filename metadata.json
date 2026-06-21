@@ -1,0 +1,6 @@
+{
+  "name": "AI App Controller",
+  "description": "An AI-powered voice and text assistant that translates conversational commands to execute Android deep Intents like opening YouTube, searching songs, or opening the Gallery using the NVIDIA MiniMax M3 NIM model.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
